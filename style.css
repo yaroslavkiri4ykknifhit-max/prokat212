@@ -333,3 +333,8 @@ button:disabled { cursor: wait; opacity: .65; }
 @media (prefers-reduced-motion:reduce) {
   *,*::before,*::after { scroll-behavior: auto !important; transition: none !important; }
 }
+@media (max-width: 620px) {
+  .hero-equipment { left: 66%; }
+  .hero-equipment .art-cutter { width: 86%; left: 0; top: 15%; }
+  .hero-equipment .art-drill { width: 76%; bottom: 9%; }
+}
