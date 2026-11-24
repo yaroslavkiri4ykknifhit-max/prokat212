@@ -1,12 +1,14 @@
+(()=>{
 const apiBase = document.documentElement.dataset.apiBase || '';
 const siteBase = document.documentElement.dataset.siteBase;
 const pageLink = path => siteBase ? siteBase+'?page='+encodeURIComponent(path) : path;
 const storageKey = 'prokat212-cart';
 const favoriteKey = 'prokat212-favorites';
 const cart = document.querySelector('#cart');
-let selection = readIds(storageKey,20);
+let selection = new URLSearchParams(location.search).get('booking')==='sent' ? [] : readIds(storageKey,20);
+if (new URLSearchParams(location.search).get('booking')==='sent') { try { localStorage.removeItem(storageKey); } catch {} }
 let favorites = readIds(favoriteKey,500);
-let items;
+let items = new Map(JSON.parse(document.querySelector('#catalog-data').textContent).map(p=>[p.id,p]));
 let activeFilter = document.querySelector('[data-filter][aria-pressed=true]')?.dataset.filter || '';
 let toastTimer;
 const form = document.querySelector('#booking');
@@ -45,7 +47,7 @@ function toggleFavorite(id) {
   }
   try { localStorage.setItem(favoriteKey,JSON.stringify(favorites)); } catch {}
   refreshFavorites();
-  if (document.querySelector('[data-favorites]')) applyFilters();
+  applyFilters();
 }
 
 function toast(message) {
@@ -92,25 +94,24 @@ function renderCart(message) {
   form.hidden = false;
 }
 
-async function openCart() {
+function openCart() {
   if (!cart) { location.href = pageLink('/#catalog'); return; }
   if (!cart.open) cart.showModal();
-  items = undefined;
+  selection = selection.filter(id=>items.has(id));
+  saveSelection();
   renderCart();
-  if (!selection.length) return;
-  try {
-    const response = await fetch(apiBase+'/api/catalog', {credentials:'omit'});
-    if (!response.ok) throw new Error();
-    items = new Map((await response.json()).map(p=>[p.id,p]));
-    const remaining = selection.filter(id=>items.has(id));
-    if (remaining.length !== selection.length) {
-      selection = remaining;
-      saveSelection();
-      form.querySelector('.form-message').textContent = 'Снятые с проката позиции удалены из корзины.';
-    }
-    renderCart(!selection.length ? 'Позиции из корзины больше недоступны для заказа.' : undefined);
-  } catch { renderCart('Не удалось загрузить корзину. Закройте её и попробуйте снова.'); }
 }
+window.addEventListener('prokat-catalog-update',event=>{
+  items = new Map(event.detail.map(p=>[p.id,p]));
+  if (cart?.open) {
+    selection = selection.filter(id=>items.has(id));
+    saveSelection();
+    renderCart();
+  }
+  refreshCount();
+  refreshFavorites();
+  applyFilters();
+});
 
 function applyFilters() {
   const grid = document.querySelector('#product-grid');
@@ -177,7 +178,7 @@ document.addEventListener('keydown',event=>{
 document.querySelector('#sort')?.addEventListener('change',applyFilters);
 window.addEventListener('storage',event=>{
   if (event.key===storageKey) { selection=readIds(storageKey,20); refreshCount(); if (cart?.open) void openCart(); }
-  if (event.key===favoriteKey) { favorites=readIds(favoriteKey,500); refreshFavorites(); if (document.querySelector('[data-favorites]')) applyFilters(); }
+  if (event.key===favoriteKey) { favorites=readIds(favoriteKey,500); refreshFavorites(); applyFilters(); }
 });
 
 if (form) {
@@ -189,26 +190,25 @@ if (form) {
     form.elements.to.min = value;
     if (form.elements.to.value < value) form.elements.to.value = value;
   });
-  form.addEventListener('submit',async event=>{
+  form.addEventListener('submit',event=>{
     event.preventDefault();
-    const button = form.querySelector('button[type=submit]');
     const message = form.querySelector('.form-message');
-    const body = Object.fromEntries(new FormData(form));
-    body.consent = form.elements.consent.checked;
-    body.items = [...selection];
-    button.disabled = true;
-    message.textContent = '';
-    try {
-      const response = await fetch(apiBase+'/api/booking',{credentials:'omit',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Не удалось отправить заявку.');
-      selection = [];
-      saveSelection();
-      form.reset();
-      form.elements.to.min = min;
-      renderCart('Заявка принята. Позвоним, чтобы подтвердить наличие и время выдачи.');
-    } catch (error) { message.textContent = error.message || 'Не удалось отправить заявку. Попробуйте ещё раз.'; }
-    finally { button.disabled = false; }
+    if (!selection.length) { message.textContent = 'Выберите оборудование.'; return; }
+    let hidden = form.querySelector('input[name=items]');
+    if (!hidden) {
+      hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = 'items';
+      form.append(hidden);
+    }
+    hidden.value = JSON.stringify(selection);
+    form.method = 'POST';
+    form.action = apiBase+'/request-booking';
+    form.querySelector('button[type=submit]').disabled = true;
+    HTMLFormElement.prototype.submit.call(form);
+  });
+  window.addEventListener('pageshow',()=>{
+    form.querySelector('button[type=submit]').disabled = false;
   });
   cart.addEventListener('close',()=>{form.querySelector('.form-message').textContent='';});
 }
@@ -216,4 +216,6 @@ if (form) {
 refreshCount();
 
 refreshFavorites();
-if (document.querySelector('[data-favorites]')) applyFilters();
+applyFilters();
+
+})();
