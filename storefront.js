@@ -46,7 +46,8 @@
     if (location.hash) {
       requestAnimationFrame(()=>document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView());
     }
-  } catch {
+  } catch (error) {
+    console.error("Storefront load failed", error);
     showError('Не удалось загрузить каталог. Попробуйте ещё раз или позвоните нам.');
   }
 
